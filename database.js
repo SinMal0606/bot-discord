@@ -1,49 +1,38 @@
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
 const dbPath = path.resolve(__dirname, 'game.db');
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS players (
-      userId TEXT PRIMARY KEY,
-      gold INTEGER DEFAULT 0
-    )
-  `);
-});
+// Tự động bật WAL mode để tối ưu hiệu năng
+db.pragma('journal_mode = WAL');
 
-// Hàm lấy vàng
+// Khởi tạo bảng
+db.exec(`
+  CREATE TABLE IF NOT EXISTS players (
+    userId TEXT PRIMARY KEY,
+    gold INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS builds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT,
+    raceName TEXT,
+    weaponName TEXT,
+    roomReached INTEGER
+  );
+`);
+
 function getPlayerGold(userId) {
-  return new Promise((resolve) => {
-    db.get(`SELECT gold FROM players WHERE userId = ?`, [userId], (err, row) => {
-      if (err || !row) resolve(0);
-      else resolve(row.gold || 0);
-    });
-  });
+  const row = db.prepare(`SELECT gold FROM players WHERE userId = ?`).get(userId);
+  return row ? row.gold : 0;
 }
 
-// Hàm cộng tích lũy vàng (Đã tối ưu SQL)
 function addPlayerGold(userId, amount) {
-  return new Promise((resolve) => {
-    if (!amount || amount <= 0) return resolve();
-
-    // Lấy vàng hiện tại rồi cộng thêm vào
-    db.get(`SELECT gold FROM players WHERE userId = ?`, [userId], (err, row) => {
-      const currentGold = (row && row.gold) ? row.gold : 0;
-      const newTotal = currentGold + amount;
-
-      db.run(
-        `INSERT OR REPLACE INTO players (userId, gold) VALUES (?, ?)`,
-        [userId, newTotal],
-        (err) => {
-          if (err) console.error("❌ Lỗi lưu vàng vào DB:", err.message);
-          else console.log(`💰 Đã cộng ${amount} vàng cho ${userId}. Tổng mới: ${newTotal}`);
-          resolve();
-        }
-      );
-    });
-  });
+  if (!amount || amount <= 0) return;
+  const currentGold = getPlayerGold(userId);
+  const newTotal = currentGold + amount;
+  
+  db.prepare(`INSERT OR REPLACE INTO players (userId, gold) VALUES (?, ?)`).run(userId, newTotal);
 }
 
 module.exports = {
