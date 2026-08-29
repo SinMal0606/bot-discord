@@ -1,41 +1,33 @@
-const Datastore = require('nedb-promises');
-const path = require('path');
+const mongoose = require('mongoose');
 
-// Khởi tạo các file lưu trữ dữ liệu
-const db = {};
-db.players = Datastore.create({ filename: path.join(__dirname, 'players.db'), autoload: true });
-db.builds = Datastore.create({ filename: path.join(__dirname, 'builds.db'), autoload: true });
+// Kết nối tới MongoDB Atlas
+const MONGO_URI = process.env.MONGO_URI;
 
-// Hàm lấy số vàng của người chơi
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ Đã kết nối MongoDB Atlas thành công!'))
+  .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
+
+// Định nghĩa Schema người chơi
+const playerSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true },
+  gold: { type: Number, default: 0 }
+});
+
+const Player = mongoose.model('Player', playerSchema);
+
+// Các hàm tương tác
 async function getPlayerGold(userId) {
-  try {
-    const doc = await db.players.findOne({ userId });
-    return doc ? doc.gold || 0 : 0;
-  } catch (err) {
-    console.error("Lỗi lấy vàng:", err);
-    return 0;
-  }
+  const player = await Player.findOne({ userId });
+  return player ? player.gold : 0;
 }
 
-// Hàm cộng tích lũy vàng
 async function addPlayerGold(userId, amount) {
   if (!amount || amount <= 0) return;
-  try {
-    const currentGold = await getPlayerGold(userId);
-    const newTotal = currentGold + amount;
-
-    await db.players.update(
-      { userId },
-      { $set: { userId, gold: newTotal } },
-      { upsert: true }
-    );
-    console.log(`💰 Đã cộng ${amount} vàng cho ${userId}. Tổng mới: ${newTotal}`);
-  } catch (err) {
-    console.error("Lỗi cộng vàng:", err);
-  }
+  await Player.findOneAndUpdate(
+    { userId },
+    { $inc: { gold: amount } },
+    { upsert: true, new: true }
+  );
 }
 
-module.exports = {
-  getPlayerGold,
-  addPlayerGold
-};
+module.exports = { getPlayerGold, addPlayerGold };
