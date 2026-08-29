@@ -1,38 +1,38 @@
-const Database = require('better-sqlite3');
+const Datastore = require('nedb-promises');
 const path = require('path');
 
-const dbPath = path.resolve(__dirname, 'game.db');
-const db = new Database(dbPath);
+// Khởi tạo các file lưu trữ dữ liệu
+const db = {};
+db.players = Datastore.create({ filename: path.join(__dirname, 'players.db'), autoload: true });
+db.builds = Datastore.create({ filename: path.join(__dirname, 'builds.db'), autoload: true });
 
-// Tự động bật WAL mode để tối ưu hiệu năng
-db.pragma('journal_mode = WAL');
-
-// Khởi tạo bảng
-db.exec(`
-  CREATE TABLE IF NOT EXISTS players (
-    userId TEXT PRIMARY KEY,
-    gold INTEGER DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS builds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId TEXT,
-    raceName TEXT,
-    weaponName TEXT,
-    roomReached INTEGER
-  );
-`);
-
-function getPlayerGold(userId) {
-  const row = db.prepare(`SELECT gold FROM players WHERE userId = ?`).get(userId);
-  return row ? row.gold : 0;
+// Hàm lấy số vàng của người chơi
+async function getPlayerGold(userId) {
+  try {
+    const doc = await db.players.findOne({ userId });
+    return doc ? doc.gold || 0 : 0;
+  } catch (err) {
+    console.error("Lỗi lấy vàng:", err);
+    return 0;
+  }
 }
 
-function addPlayerGold(userId, amount) {
+// Hàm cộng tích lũy vàng
+async function addPlayerGold(userId, amount) {
   if (!amount || amount <= 0) return;
-  const currentGold = getPlayerGold(userId);
-  const newTotal = currentGold + amount;
-  
-  db.prepare(`INSERT OR REPLACE INTO players (userId, gold) VALUES (?, ?)`).run(userId, newTotal);
+  try {
+    const currentGold = await getPlayerGold(userId);
+    const newTotal = currentGold + amount;
+
+    await db.players.update(
+      { userId },
+      { $set: { userId, gold: newTotal } },
+      { upsert: true }
+    );
+    console.log(`💰 Đã cộng ${amount} vàng cho ${userId}. Tổng mới: ${newTotal}`);
+  } catch (err) {
+    console.error("Lỗi cộng vàng:", err);
+  }
 }
 
 module.exports = {
