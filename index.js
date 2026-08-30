@@ -12,7 +12,7 @@ const armors = require('./data/armor');
 const monsters = require('./data/monsters');
 const spells = require('./data/spells');
 const staves = require('./data/staves');
-const { runCombat, calculateAtk, calculateDef } = require('./combat');
+const { runCombat } = require('./combat');
 const db = require('./database');
 
 const express = require('express');
@@ -39,6 +39,7 @@ const client = new Client({
 const activeRuns = new Map();
 
 function getRandomElements(arr, count) {
+  if (!arr || arr.length === 0) return [];
   const shuffled = [...arr].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
 }
@@ -65,7 +66,7 @@ function getStarterWeapon(stats) {
   return foundWeapon || weapons[0];
 }
 
-// Hàm sinh 3 nhánh đường đi ngẫu nhiên
+// Sinh 3 nhánh đường đi ngẫu nhiên
 function generatePathChoices(userId, roomNumber) {
   if (roomNumber === 10 || roomNumber === 20 || roomNumber === 30) {
     const bossName = roomNumber === 30 ? "TRÙM CUỐI: Chúa Tể Vô Vực" : `MINI-BOSS Phòng ${roomNumber}`;
@@ -100,7 +101,7 @@ function generatePathChoices(userId, roomNumber) {
   return row;
 }
 
-// --- REGISTER SLASH COMMANDS ---
+// REGISTER SLASH COMMANDS
 const commands = [
   new SlashCommandBuilder().setName('start-run').setDescription('Bắt đầu lượt chơi mới (30 Phòng)'),
   new SlashCommandBuilder().setName('profile').setDescription('Xem thông tin và số vàng hiện có')
@@ -108,7 +109,7 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-client.on('clientReady', async () => {
+client.on('ready', async () => {
   console.log(`Bot ${client.user.tag} đã sẵn sàng!`);
   try {
     console.log('🔄 Đang đăng ký Slash Commands...');
@@ -127,13 +128,14 @@ client.on('interactionCreate', async (interaction) => {
     const userId = interaction.user.id;
 
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
-      const customIdUser = interaction.customId.split(':')[2] || interaction.customId.split(':')[1];
+      const parts = interaction.customId.split(':');
+      const customIdUser = parts[2] || parts[1];
       if (customIdUser && customIdUser !== userId) {
         return interaction.reply({ content: '❌ Đây không phải là lượt chơi của bạn!', ephemeral: true });
       }
     }
 
-    // --- 1. SLASH COMMANDS ---
+    // 1. SLASH COMMANDS
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'profile') {
         await interaction.deferReply();
@@ -198,8 +200,8 @@ client.on('interactionCreate', async (interaction) => {
           staff: null,
           spell: null,
           gold: 0,
-          runes: 50, // Khởi đầu cho 50 Runes
-          room: 0
+          runes: 50,
+          room: 1
         };
 
         activeRuns.set(userId, playerData);
@@ -226,18 +228,20 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // --- 2. BUTTON INTERACTIONS ---
+    // 2. BUTTON INTERACTIONS
     if (interaction.isButton()) {
       const parts = interaction.customId.split(':');
       const action = parts[0];
 
       if (action === 'resume_run') {
         const player = activeRuns.get(userId);
-        const pathRow = generatePathChoices(userId, player.room + 1);
+        if (!player) return interaction.reply({ content: '❌ Lượt chơi không tồn tại.', ephemeral: true });
+
+        const pathRow = generatePathChoices(userId, player.room);
 
         const statusEmbed = new EmbedBuilder()
           .setColor(0x00FFFF)
-          .setTitle(`🛡️ Chuẩn Bị Vào Phòng ${player.room + 1}`)
+          .setTitle(`🛡️ Chuẩn Bị Vào Phòng ${player.room}`)
           .setDescription(`❤️ HP: \`${player.hp}/${player.maxHp}\` | 🔮 Runes: \`${player.runes}\`\nHãy chọn 1 trong các đường đi phía dưới:`);
 
         return interaction.update({ embeds: [statusEmbed], components: [pathRow] });
@@ -276,12 +280,10 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.editReply({ embeds: [embed], components: [pathRow] });
       }
 
-      // Xử lý chọn 1 trong 3 nhánh đường đi
       if (action === 'choose_path') {
         const pathType = parts[1];
         await interaction.deferUpdate();
 
-        // 1. Nhánh Trạm Nghỉ Chân
         if (pathType === 'rest') {
           const healHp = Math.round(player.maxHp * 0.4);
           const healMp = Math.round(player.maxMp * 0.5);
@@ -293,14 +295,13 @@ client.on('interactionCreate', async (interaction) => {
             .setTitle(`🏕️ Trạm Nghỉ Chân (Phòng ${player.room})`)
             .setDescription(`Bạn tìm thấy một đống lửa an toàn để nghỉ ngơi.\n❤️ Hồi \`+${healHp}\` HP (${player.hp}/${player.maxHp})\n🧪 Hồi \`+${healMp}\` MP (${player.mp}/${player.maxMp})`);
 
-          const pathRow = generatePathChoices(userId, player.room + 1);
           player.room += 1;
+          const pathRow = generatePathChoices(userId, player.room);
           return interaction.editReply({ embeds: [restEmbed], components: [pathRow] });
         }
 
-        // 2. Nhánh Rương Báu Rune
         if (pathType === 'chest') {
-          const foundRunes = Math.floor(Math.random() * 41) + 30; // 30 - 70 Runes
+          const foundRunes = Math.floor(Math.random() * 41) + 30;
           player.runes += foundRunes;
 
           const chestEmbed = new EmbedBuilder()
@@ -308,12 +309,11 @@ client.on('interactionCreate', async (interaction) => {
             .setTitle(`💎 Mở Rương Báu (Phòng ${player.room})`)
             .setDescription(`Bạn tìm thấy một rương cổ chứa đầy ma thuật!\n🔮 Nhận được: \`+${foundRunes}\` Runes (Tổng: \`${player.runes}\` Runes)`);
 
-          const pathRow = generatePathChoices(userId, player.room + 1);
           player.room += 1;
+          const pathRow = generatePathChoices(userId, player.room);
           return interaction.editReply({ embeds: [chestEmbed], components: [pathRow] });
         }
 
-        // 3. Nhánh Cửa Hàng Rune
         if (pathType === 'shop') {
           const shopEmbed = new EmbedBuilder()
             .setColor(0x9B59B6)
@@ -338,7 +338,6 @@ client.on('interactionCreate', async (interaction) => {
           return interaction.editReply({ embeds: [shopEmbed], components: [shopRow] });
         }
 
-        // 4. Nhánh Chiến Đấu (Quái thường / Mini-Boss / Boss)
         if (pathType === 'monster') {
           await interaction.editReply({ 
             embeds: [new EmbedBuilder().setTitle(`⚔️ Đang chiến đấu tại Phòng ${player.room}...`).setColor(0xFF0000)], 
@@ -359,7 +358,6 @@ client.on('interactionCreate', async (interaction) => {
           const isAlive = await runCombat(interaction, player, currentMonster);
 
           if (isAlive) {
-            // Thắng Trùm Cuối Phòng 30
             if (player.room === 30) {
               const victoryEmbed = new EmbedBuilder()
                 .setColor(0xFFD700)
@@ -373,7 +371,6 @@ client.on('interactionCreate', async (interaction) => {
               return await interaction.editReply({ embeds: [victoryEmbed], components: [row] });
             }
 
-            // Thưởng Runes & Vàng khi diệt quái
             const isBoss = player.room % 10 === 0;
             const earnedGold = isBoss ? Math.floor(Math.random() * 301) + 300 : Math.floor(Math.random() * 41) + 20;
             const earnedRunes = isBoss ? Math.floor(Math.random() * 101) + 100 : Math.floor(Math.random() * 21) + 15;
@@ -381,13 +378,12 @@ client.on('interactionCreate', async (interaction) => {
             player.gold += earnedGold;
             player.runes += earnedRunes;
 
-            // Tạo lựa chọn Trang bị thưởng
             const allPossibleRewards = [
-              ...weapons.map(w => ({ ...w, itemType: 'weapon' })),
-              ...armors.map(a => ({ ...a, itemType: 'armor' })),
-              ...buffs.map(b => ({ ...b, itemType: 'buff' })),
-              ...staves.map(st => ({ ...st, itemType: 'staff' })),
-              ...spells.map(sp => ({ ...sp, itemType: 'spell' }))
+              ...(weapons || []).map(w => ({ ...w, itemType: 'weapon' })),
+              ...(armors || []).map(a => ({ ...a, itemType: 'armor' })),
+              ...(buffs || []).map(b => ({ ...b, itemType: 'buff' })),
+              ...(staves || []).map(st => ({ ...st, itemType: 'staff' })),
+              ...(spells || []).map(sp => ({ ...sp, itemType: 'spell' }))
             ];
 
             const randomRewards = getRandomElements(allPossibleRewards, 3);
@@ -400,7 +396,7 @@ client.on('interactionCreate', async (interaction) => {
               rewardOptions.push({
                 label: `[${item.itemType.toUpperCase()}] ${item.name}`,
                 value: uniqueKey,
-                description: `Chiến lợi phẩm rơi ra từ ${currentMonster.name}`
+                description: `Rơi ra từ ${currentMonster.name}`
               });
             });
 
@@ -419,12 +415,11 @@ client.on('interactionCreate', async (interaction) => {
               .setTitle(`🎉 HẠ GỤC ${currentMonster.name.toUpperCase()}!`)
               .setDescription(
                 `💰 **Thưởng:** +\`${earnedGold}\` Gold | 🔮 +\`${earnedRunes}\` Runes (Hiện có: \`${player.runes}\` Runes)\n` +
-                `Chọn 1 món đồ thưởng bên dưới để tiếp tục chọn đường đi tiếp theo:`
+                `Chọn 1 món đồ thưởng bên dưới để tiếp tục:`
               );
 
             await interaction.editReply({ embeds: [winEmbed], components: [row] });
           } else {
-            // Thua trận
             const loseEmbed = new EmbedBuilder()
               .setColor(0xFF0000)
               .setTitle(`☠️ BẠN ĐÃ HY SINH!`)
@@ -458,12 +453,11 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // --- 3. SELECT MENU INTERACTIONS ---
+    // 3. SELECT MENU INTERACTIONS
     if (interaction.isStringSelectMenu()) {
       const parts = interaction.customId.split(':');
       const action = parts[0];
 
-      // Mua đồ ở Cửa hàng Rune
       if (action === 'buy_shop') {
         const player = activeRuns.get(userId);
         if (!player) return;
@@ -502,8 +496,8 @@ client.on('interactionCreate', async (interaction) => {
           msg = "🚪 Bạn rời khỏi Cửa hàng mà không mua gì.";
         }
 
-        const pathRow = generatePathChoices(userId, player.room + 1);
         player.room += 1;
+        const pathRow = generatePathChoices(userId, player.room);
 
         const resEmbed = new EmbedBuilder()
           .setColor(0x9B59B6)
@@ -513,7 +507,6 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.update({ embeds: [resEmbed], components: [pathRow] });
       }
 
-      // Chọn nhận phần thưởng sau khi diệt quái
       if (action === 'select_reward') {
         const player = activeRuns.get(userId);
         if (!player) return;
@@ -535,8 +528,8 @@ client.on('interactionCreate', async (interaction) => {
           }
         }
 
-        const pathRow = generatePathChoices(userId, player.room + 1);
         player.room += 1;
+        const pathRow = generatePathChoices(userId, player.room);
 
         const statusEmbed = new EmbedBuilder()
           .setColor(0x00FFFF)
