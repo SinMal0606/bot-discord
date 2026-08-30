@@ -8,34 +8,44 @@ mongoose.connect(MONGO_URI)
   .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
 
 // Định nghĩa Schema người chơi
-const playerSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
   gold: { type: Number, default: 0 }
 });
 
-const Player = mongoose.model('Player', playerSchema);
+const User = mongoose.model('User', userSchema);
 
 // Các hàm tương tác
-async function getPlayerGold(userId) {
-  const player = await Player.findOne({ userId });
-  return player ? player.gold : 0;
-}
-
-// Cập nhật hàm addPlayerGold trong database.js
 async function addPlayerGold(userId, amount) {
   try {
     if (!amount || amount <= 0) return;
 
-    // Giả sử Model người dùng của bạn tên là User (hoặc Player/UserSchema)
-    // Dùng $inc để cộng dồn trực tiếp vào field gold trong MongoDB
-    await User.findOneAndUpdate(
-      { userId: userId },
+    // Ép kiểu userId về String để tránh lệch Schema
+    const idStr = String(userId);
+
+    // Dùng findOneAndUpdate với $inc để cộng dồn
+    const updatedUser = await User.findOneAndUpdate(
+      { userId: idStr },
       { $inc: { gold: amount } },
-      { new: true, upsert: true } // Nếu chưa có user thì tự tạo mới
+      { new: true, upsert: true } // Nếu chưa có record thì tự tạo mới
     );
-    console.log(`✅ Đã cộng ${amount} gold cho user: ${userId}`);
+
+    console.log(`✅ [DB] Đã cộng ${amount} gold cho ID ${idStr}. Tổng hiện tại: ${updatedUser.gold}`);
+    return updatedUser;
   } catch (error) {
-    console.error('❌ Lỗi khi cộng gold vào Database:', error);
+    console.error('❌ [DB Error] Lỗi khi addPlayerGold:', error);
+  }
+}
+
+async function getPlayerGold(userId) {
+  try {
+    const idStr = String(userId);
+    const user = await User.findOne({ userId: idStr });
+    
+    return user ? user.gold : 0;
+  } catch (error) {
+    console.error('❌ [DB Error] Lỗi khi getPlayerGold:', error);
+    return 0;
   }
 }
 
