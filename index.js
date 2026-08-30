@@ -469,38 +469,55 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (action === 'save_build') {
-        await interaction.deferUpdate();
-
-        const pData = activeRuns.get(userId);
-        if (pData) {
-          try {
-            console.log(`💰 Đang lưu ${pData.gold} gold cho người chơi ${userId}...`);
-
-            // 1. Thực hiện cộng vàng vào DB
-            if (pData.gold > 0) {
-              await db.addPlayerGold(pData.userId, pData.gold);
-            }
-
-            // 2. Lưu thông tin Build
-            if (db.saveBuild) {
-              await db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
-            }
-          } catch (dbError) {
-            console.error('❌ Lỗi khi lưu dữ liệu vào DB:', dbError);
-          } finally {
-            // 3. Xóa run tạm CHỈ KHI ĐÃ CỘNG GOLD XONG
-            activeRuns.delete(userId);
-          }
+        // 1. Phản hồi ngay với Discord để tránh Timeout 3 giây
+        try {
+          await interaction.deferUpdate();
+        } catch (e) {
+          console.error("❌ Không thể deferUpdate:", e);
         }
 
-        return interaction.editReply({ 
+        const pData = activeRuns.get(userId);
+
+        if (!pData) {
+          return interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('⚠️ Không tìm thấy thông tin lượt chơi!')
+                .setDescription('Dữ liệu lượt chơi này có thể đã được lưu trước đó hoặc không còn tồn tại.')
+                .setColor(0xFF9900)
+            ],
+            components: []
+          });
+        }
+
+        let savedGold = pData.gold || 0;
+
+        try {
+          // 2. Thực hiện ghi dữ liệu vào Database
+          if (savedGold > 0 && db.addPlayerGold) {
+            console.log(`💰 Đang lưu ${savedGold} gold cho user ${userId}...`);
+            await db.addPlayerGold(pData.userId, savedGold);
+          }
+
+          if (db.saveBuild) {
+            await db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
+          }
+        } catch (dbError) {
+          console.error('❌ Lỗi DB khi lưu build:', dbError);
+        } finally {
+          // 3. Xóa run tạm sau khi xử lý xong
+          activeRuns.delete(userId);
+        }
+
+        // 4. Cập nhật tin nhắn báo thành công
+        return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setTitle('💾 Đã Lưu Thành Công!')
-              .setDescription(`Toàn bộ **${pData ? pData.gold : 0} Gold** tích lũy đã được cộng vào tài khoản.\nDùng `/profile` để kiểm tra hoặc `/start-run` để bắt đầu lượt mới!`)
+              .setDescription(`Toàn bộ **${savedGold} Gold** tích lũy đã được cộng vào tài khoản.\nDùng \`/profile\` để kiểm tra hoặc \`/start-run\` để bắt đầu lượt mới!`)
               .setColor(0x00FF00)
-          ], 
-          components: [] 
+          ],
+          components: []
         });
       }
     }
