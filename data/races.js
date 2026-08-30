@@ -1,25 +1,18 @@
-module.exports = {
-  human: {
-    name: "Con người",
-    subraces: {
-      black: { name: "Nguoi moi da den", vigor: 14, mind: 8, str: 15, dex: 10, int: 8, faith: 9 },
-      white: { name: "Thuong dang da trang", vigor: 10, mind: 14, str: 8, dex: 10, int: 15, faith: 11 },
-      yellow: { name: "Goat da vang", vigor: 11, mind: 10, str: 9, dex: 16, int: 10, faith: 8 }
-    }
+module.exports = [
+  {
+    id: "human",
+    name: "Con Người",
+    subraces: [
+      { id: "warrior", name: "Chiến Binh", baseStats: { vigor: 12, mind: 5, strength: 14, dexterity: 10, intelligence: 5, faith: 5, agility: 8 } },
+      { id: "mage", name: "Pháp Sư", baseStats: { vigor: 8, mind: 14, strength: 5, dexterity: 8, intelligence: 15, faith: 8, agility: 6 } }
+    ]
   },
-  elf: {
+  {
+    id: "elf",
     name: "Tộc Elf",
-    subraces: {
-      high_elf: { name: "High Elf", vigor: 9, mind: 15, str: 7, dex: 11, int: 17, faith: 12 },
-      wood_elf: { name: "Wood Elf", vigor: 10, mind: 11, str: 9, dex: 18, int: 10, faith: 7 },
-      dark_elf: { name: "Dark Elf", vigor: 11, mind: 12, str: 12, dex: 14, int: 13, faith: 6 }
-    }
-  },
-  dwarf: {
-    name: "Tộc Dwarf",
-    subraces: {
-      mountain_dwarf: { name: "Mountain Dwarf", vigor: 16, mind: 9, str: 16, dex: 8, int: 7, faith: 8 },
-      runesmith: { name: "Rune Dwarf", vigor: 13, mind: 13, str: 12, dex: 7, int: 12, faith: 11 }
-    }
+    subraces: [
+      { id: "high_elf", name: "Cao Tộc Elf", baseStats: { vigor: 8, mind: 12, strength: 6, dexterity: 12, intelligence: 12, faith: 10, agility: 10 } },
+      { id: "night_elf", name: "Sát Thủ Elf", baseStats: { vigor: 9, mind: 8, strength: 8, dexterity: 15, intelligence: 6, faith: 5, agility: 14 } }
+    ]
   }
-};
+];

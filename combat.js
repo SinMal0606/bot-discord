@@ -1,132 +1,76 @@
-const { EmbedBuilder } = require('discord.js');
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function createHealthBar(current, max, size = 10) {
-  const percentage = Math.max(0, Math.min(1, current / max));
-  const progress = Math.round(size * percentage);
-  const emptyProgress = size - progress;
-  return '🟩'.repeat(progress) + '🟥'.repeat(emptyProgress);
-}
-
-// HÀM TÍNH TỔNG KHÁNG CỦA NGƯỜI CHƠI (SCALE TỪ CHỈ SỐ + GIÁP)
-function getPlayerResistances(player) {
-  // Mỗi điểm chỉ số tương ứng 1% kháng (0.01). Giới hạn kháng tự nhiên tối đa là 50% (0.5)
-  const baseResists = {
-    physical: Math.min(0.5, player.stats.str * 0.01),
-    fire: Math.min(0.5, player.stats.vigor * 0.01),
-    lightning: Math.min(0.5, player.stats.dex * 0.01),
-    magic: Math.min(0.5, player.stats.int * 0.01),
-    holy: Math.min(0.5, player.stats.faith * 0.01)
-  };
-
-  // Cộng thêm kháng từ Giáp nếu có trang bị
-  const armorResists = player.armor ? player.armor.resists || {} : {};
-
+function calculateResistances(stats, armor) {
   return {
-    physical: Math.min(0.85, baseResists.physical + (armorResists.physical || 0)),
-    fire: Math.min(0.85, baseResists.fire + (armorResists.fire || 0)),
-    lightning: Math.min(0.85, baseResists.lightning + (armorResists.lightning || 0)),
-    magic: Math.min(0.85, baseResists.magic + (armorResists.magic || 0)),
-    holy: Math.min(0.85, baseResists.holy + (armorResists.holy || 0))
+    physical: stats.strength * 1.5 + (armor?.resistBonus?.physical || 0),
+    magic: stats.intelligence * 1.5 + (armor?.resistBonus?.magic || 0),
+    fire: stats.vigor * 1.2 + (armor?.resistBonus?.fire || 0),
+    lightning: stats.dexterity * 1.2 + (armor?.resistBonus?.lightning || 0),
+    holy: stats.faith * 1.5 + (armor?.resistBonus?.holy || 0),
+    dodgeChance: Math.min(stats.agility * 0.5, 40) // Tối đa 40% né
   };
 }
 
-async function runCombat(interaction, player, baseMonster) {
-  const monster = { ...baseMonster, maxHp: baseMonster.hp };
-  const playerResists = getPlayerResistances(player);
-
-  for (let turn = 1; player.hp > 0 && monster.hp > 0; turn++) {
-    await sleep(600);
-
-    let pDmg = 0;
-    let pDmgType = "physical";
-    let playerLog = "";
-
-    // --- LƯỢT NGƯỜI CHƠI ĐÁNH ---
-    const trySpell = Math.random() < 0.5;
-    
-    // 1. Nếu người chơi dùng Phép
-    if (trySpell && player.spell && player.staff && player.mp >= player.spell.cost) {
-      player.mp -= player.spell.cost;
-      pDmgType = player.spell.type; // Hệ sát thương từ Phép (fire, magic, lightning, holy,...)
-
-      const staffBase = player.staff.basePower || 0;
-      const staffScale = player.staff.scaleInt || 0;
-      const totalSpellPower = staffBase + Math.round(player.stats.int * staffScale);
-      const totalMagicAtk = (player.stats.int + totalSpellPower) * player.spell.multiplier;
-
-      // LẤY KHÁNG CỦA QUÁI THEO HỆ PHÉP
-      let mResist = (monster.resistances && monster.resistances[pDmgType]) || 0;
-      
-      // Công thức: Sát thương thực tế = ATK * (1 - Kháng)
-      pDmg = Math.max(1, Math.round(totalMagicAtk * (1 - mResist)));
-      
-      playerLog = `• Bạn tốn **${player.spell.cost} MP** xả **[${player.spell.name}]** gây **${pDmg}** DMG (${pDmgType})!`;
-    } 
-    // 2. Nếu người chơi đánh bằng Vũ Khí
-    else {
-      pDmgType = player.weapon ? player.weapon.type : "physical"; // Hệ sát thương từ Vũ Khí
-      let playerAtk = player.weapon ? player.weapon.baseAtk + player.stats.str : player.stats.str;
-
-      // LẤY KHÁNG CỦA QUÁI THEO HỆ VŨ KHÍ
-      let mResist = (monster.resistances && monster.resistances[pDmgType]) || 0;
-      
-      pDmg = Math.max(1, Math.round(playerAtk * (1 - mResist)));
-      
-      playerLog = `• Bạn dùng **${player.weapon ? player.weapon.name : 'Tay không'}** gây **${pDmg}** DMG (${pDmgType})!`;
+function processCombatTurn(player, monster) {
+  let log = [];
+  const pRes = calculateResistances(player.stats, player.equipment.armor);
+  
+  // 1. Lượt của Người chơi (Ngẫu nhiên Dùng Vũ Khí hoặc Dùng Phép)
+  const useSpell = player.spells.length > 0 && Math.random() < 0.4 && player.currentMana >= 10;
+  
+  if (useSpell) {
+    const spell = player.spells[Math.floor(Math.random() * player.spells.length)];
+    player.currentMana -= spell.manaCost;
+    if (spell.type === "heal") {
+      const healAmt = spell.basePower + player.stats[spell.scaling] * 1.2;
+      player.currentHp = Math.min(player.maxHp, player.currentHp + healAmt);
+      log.push(`✨ Bạn dùng **${spell.name}** và hồi ${Math.floor(healAmt)} HP!`);
+    } else if (spell.type === "damage") {
+      let dmg = spell.basePower + player.stats[spell.scaling] * 1.5;
+      dmg = Math.max(1, dmg - (monster.resists[spell.damageType] || 0));
+      monster.hp -= dmg;
+      log.push(`🔥 Bạn niệm **${spell.name}** gây ${Math.floor(dmg)} sát thương ${spell.damageType}!`);
     }
-
-    // Trừ HP của quái
-    monster.hp -= pDmg;
-    
-    // --- 2. LƯỢT QUÁI ĐÁNH (NGẪU NHIÊN KỸ NĂNG) ---
-    let monsterLog = "";
-    if (monster.hp > 0) {
-      // Chọn 1 skill ngẫu nhiên từ danh sách kỹ năng của quái
-      const skills = monster.skills && monster.skills.length > 0 
-        ? monster.skills 
-        : [{ name: "Đánh Thường", multiplier: 1.0, type: "physical" }];
-
-      const randomSkill = skills[Math.floor(Math.random() * skills.length)];
-      
-      // Tính sát thương dựa trên Cấp Phòng + Skill Multiplier
-      const baseMonsterAtk = 10 + (player.room * 3);
-      const rawMonsterDmg = baseMonsterAtk * randomSkill.multiplier;
-
-      // Trừ theo phần trăm kháng thuộc tính của người chơi
-      const pResist = playerResists[randomSkill.type] || 0;
-      const mDmg = Math.max(1, Math.round(rawMonsterDmg * (1 - pResist)));
-
-      player.hp -= mDmg;
-      monsterLog = `\n• **${monster.name}** dùng kỹ năng **[${randomSkill.name}]** gây **${mDmg}** DMG (${randomSkill.type})!`;
+  } else {
+    // Tấn công vũ khí
+    let totalDmg = 0;
+    if (player.equipment.weapon) {
+      for (const [dmgType, val] of Object.entries(player.equipment.weapon.damage)) {
+        let scaleVal = 0;
+        for (const [stat, ratio] of Object.entries(player.equipment.weapon.scaling)) {
+          scaleVal += (player.stats[stat] || 0) * ratio;
+        }
+        let netDmg = Math.max(1, (val + scaleVal) - (monster.resists[dmgType] || 0));
+        totalDmg += netDmg;
+      }
     } else {
-      monsterLog = `\n• **${monster.name}** đã bị tiêu diệt!`;
+      totalDmg = Math.max(1, player.stats.strength - monster.resists.physical);
     }
-
-    const embed = new EmbedBuilder()
-      .setColor(player.hp > 0 ? 0x00FF00 : 0xFF0000)
-      .setTitle(`⚔️ Trận Chiến Phòng ${player.room} - Lượt ${turn}`)
-      .addFields(
-        { 
-          name: `👤 ${player.name} (${player.raceName})`, 
-          value: `❤️ HP: ${Math.max(0, player.hp)}/${player.maxHp}\n🧪 MP: ${player.mp}/${player.maxMp}\n${createHealthBar(player.hp, player.maxHp)}`, 
-          inline: true 
-        },
-        { 
-          name: `👾 ${monster.name}`, 
-          value: `❤️ HP: ${Math.max(0, monster.hp)}/${monster.maxHp}\n${createHealthBar(monster.hp, monster.maxHp)}`, 
-          inline: true 
-        },
-        { name: "📜 Nhật ký lượt này", value: playerLog + monsterLog }
-      );
-
-    await interaction.editReply({ embeds: [embed] });
+    monster.hp -= totalDmg;
+    log.push(`⚔️ Bạn tấn công gây ${Math.floor(totalDmg)} sát thương!`);
   }
 
-  return player.hp > 0;
+  if (monster.hp <= 0) {
+    log.push(`🎉 **${monster.name}** đã bị hạ gục!`);
+    return { isDead: false, win: true, log };
+  }
+
+  // 2. Lượt của Quái vật
+  const dodgeRoll = Math.random() * 100;
+  if (dodgeRoll < pRes.dodgeChance) {
+    log.push(`💨 Bạn đã né thành công đòn đánh của **${monster.name}**!`);
+  } else {
+    const skill = monster.skills[Math.floor(Math.random() * monster.skills.length)];
+    let rawDmg = monster.atk * skill.multiplier;
+    let finalDmg = Math.max(1, rawDmg - (pRes[skill.damageType] || 0));
+    player.currentHp -= finalDmg;
+    log.push(`💥 **${monster.name}** dùng **${skill.name}** gây ${Math.floor(finalDmg)} sát thương ${skill.damageType}!`);
+  }
+
+  if (player.currentHp <= 0) {
+    log.push(`💀 Bạn đã bị hạ gục...`);
+    return { isDead: true, win: false, log };
+  }
+
+  return { isDead: false, win: false, log };
 }
 
-module.exports = { runCombat, getPlayerResistances };
+module.exports = { processCombatTurn };
