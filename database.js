@@ -10,8 +10,15 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 async function connectDB() {
+  const uri = process.env.MONGODB_URI;
+
+  if (!uri) {
+    console.error("❌ LỖI: Chưa cấu hình MONGODB_URI trong biến môi trường!");
+    return;
+  }
+
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(uri);
     console.log("Connected to MongoDB!");
   } catch (err) {
     console.error("MongoDB Connection Error:", err);
