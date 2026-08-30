@@ -149,22 +149,42 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'profile') {
+        // 1. Báo Discord hoãn phản hồi ngay lập tức
         await interaction.deferReply();
-        const totalGold = await db.getPlayerGold(userId);
-        const userAvatar = interaction.user.displayAvatarURL({ dynamic: true, size: 256 });
 
-        const simpleProfileEmbed = new EmbedBuilder()
-          .setColor(0xF1C40F)
-          .setTitle(`📜 Hồ Sơ Hiệp Sĩ`)
-          .setThumbnail(userAvatar)
-          .addFields(
-            { name: '👤 Tên Hiệp Sĩ', value: `**${interaction.user.username}**`, inline: true },
-            { name: '💰 Tổng Vàng Sở Hữu', value: `\`${totalGold}\` Gold`, inline: true }
-          )
-          .setFooter({ text: 'Discord Roguelike Bot', iconURL: interaction.client.user.displayAvatarURL() })
-          .setTimestamp();
+        try {
+          // 2. Tạo cơ chế Timeout 4 giây cho Database để tránh treo bot
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Database Timeout')), 4000)
+          );
 
-        return interaction.editReply({ embeds: [simpleProfileEmbed] });
+          // 3. Lấy số vàng với cơ chế bảo vệ timeout
+          const totalGold = await Promise.race([
+            db.getPlayerGold(userId),
+            timeoutPromise
+          ]).catch(err => {
+            console.error('❌ Lỗi/Timeout khi lấy Gold từ DB:', err);
+            return 0; // Trả về 0 nếu DB bị lỗi/timeout
+          });
+
+          const userAvatar = interaction.user.displayAvatarURL({ dynamic: true, size: 256 });
+
+          const simpleProfileEmbed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle(`📜 Hồ Sơ Hiệp Sĩ`)
+            .setThumbnail(userAvatar)
+            .addFields(
+              { name: '👤 Tên Hiệp Sĩ', value: `**${interaction.user.username}**`, inline: true },
+              { name: '💰 Tổng Vàng Sở Hữu', value: `\`${totalGold}\` Gold`, inline: true }
+            )
+            .setFooter({ text: 'Discord Roguelike Bot', iconURL: interaction.client.user.displayAvatarURL() })
+            .setTimestamp();
+
+          return await interaction.editReply({ embeds: [simpleProfileEmbed] });
+        } catch (error) {
+          console.error('❌ Lỗi xử lý lệnh profile:', error);
+          return await interaction.editReply({ content: '❌ Có lỗi xảy ra khi tải hồ sơ. Vui lòng thử lại sau!' });
+        }
       }
 
       if (interaction.commandName === 'start-run') {
