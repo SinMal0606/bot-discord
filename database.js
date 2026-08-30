@@ -21,13 +21,22 @@ async function getPlayerGold(userId) {
   return player ? player.gold : 0;
 }
 
+// Cập nhật hàm addPlayerGold trong database.js
 async function addPlayerGold(userId, amount) {
-  if (!amount || amount <= 0) return;
-  await Player.findOneAndUpdate(
-    { userId },
-    { $inc: { gold: amount } },
-    { upsert: true, new: true }
-  );
+  try {
+    if (!amount || amount <= 0) return;
+
+    // Giả sử Model người dùng của bạn tên là User (hoặc Player/UserSchema)
+    // Dùng $inc để cộng dồn trực tiếp vào field gold trong MongoDB
+    await User.findOneAndUpdate(
+      { userId: userId },
+      { $inc: { gold: amount } },
+      { new: true, upsert: true } // Nếu chưa có user thì tự tạo mới
+    );
+    console.log(`✅ Đã cộng ${amount} gold cho user: ${userId}`);
+  } catch (error) {
+    console.error('❌ Lỗi khi cộng gold vào Database:', error);
+  }
 }
 
 module.exports = { getPlayerGold, addPlayerGold };

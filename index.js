@@ -469,33 +469,35 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (action === 'save_build') {
-        // 1. Hoãn phản hồi ngay lập tức để Discord không báo timeout 3 giây
         await interaction.deferUpdate();
 
         const pData = activeRuns.get(userId);
         if (pData) {
           try {
-            // 2. Thực hiện ghi dữ liệu vào DB (cho dù tốn vài giây vẫn an toàn)
+            console.log(`💰 Đang lưu ${pData.gold} gold cho người chơi ${userId}...`);
+
+            // 1. Thực hiện cộng vàng vào DB
             if (pData.gold > 0) {
               await db.addPlayerGold(pData.userId, pData.gold);
             }
+
+            // 2. Lưu thông tin Build
             if (db.saveBuild) {
               await db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
             }
           } catch (dbError) {
             console.error('❌ Lỗi khi lưu dữ liệu vào DB:', dbError);
           } finally {
-            // 3. Xóa lượt chơi khỏi bộ nhớ tạm
+            // 3. Xóa run tạm CHỈ KHI ĐÃ CỘNG GOLD XONG
             activeRuns.delete(userId);
           }
         }
 
-        // 4. Cập nhật lại giao diện sau khi đã hoàn tất lưu dữ liệu
         return interaction.editReply({ 
           embeds: [
             new EmbedBuilder()
-              .setTitle('💾 Đã lưu thành công!')
-              .setDescription('Toàn bộ số vàng tích lũy đã được chuyển vào tài khoản của bạn. Hãy dùng `/start-run` để bắt đầu lượt mới!')
+              .setTitle('💾 Đã Lưu Thành Công!')
+              .setDescription(`Toàn bộ **${pData ? pData.gold : 0} Gold** tích lũy đã được cộng vào tài khoản.\nDùng `/profile` để kiểm tra hoặc `/start-run` để bắt đầu lượt mới!`)
               .setColor(0x00FF00)
           ], 
           components: [] 
