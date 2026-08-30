@@ -65,9 +65,44 @@ function getStarterWeapon(stats) {
   return foundWeapon || weapons[0];
 }
 
-// --- ĐĂNG KÝ SLASH COMMANDS VỚI DISCORD API ---
+// Hàm sinh 3 nhánh đường đi ngẫu nhiên
+function generatePathChoices(userId, roomNumber) {
+  if (roomNumber === 10 || roomNumber === 20 || roomNumber === 30) {
+    const bossName = roomNumber === 30 ? "TRÙM CUỐI: Chúa Tể Vô Vực" : `MINI-BOSS Phòng ${roomNumber}`;
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`choose_path:monster:${userId}`)
+        .setLabel(`⚔️ Khiêu Chiến ${bossName}`)
+        .setStyle(ButtonStyle.Danger)
+    );
+  }
+
+  const pool = [
+    { id: 'monster', label: '⚔️ Quái Thường', style: ButtonStyle.Primary },
+    { id: 'monster', label: '⚔️ Quái Thường', style: ButtonStyle.Primary },
+    { id: 'shop', label: '🛒 Cửa Hàng Rune', style: ButtonStyle.Success },
+    { id: 'rest', label: '🏕️ Trạm Nghỉ Chân', style: ButtonStyle.Secondary },
+    { id: 'chest', label: '💎 Rương Báu Rune', style: ButtonStyle.Success }
+  ];
+
+  const selected = getRandomElements(pool, 3);
+  const row = new ActionRowBuilder();
+
+  selected.forEach((choice, idx) => {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`choose_path:${choice.id}:${userId}:${idx}`)
+        .setLabel(`Hướng ${idx + 1}: ${choice.label}`)
+        .setStyle(choice.style)
+    );
+  });
+
+  return row;
+}
+
+// --- REGISTER SLASH COMMANDS ---
 const commands = [
-  new SlashCommandBuilder().setName('start-run').setDescription('Bắt đầu lượt chơi mới'),
+  new SlashCommandBuilder().setName('start-run').setDescription('Bắt đầu lượt chơi mới (30 Phòng)'),
   new SlashCommandBuilder().setName('profile').setDescription('Xem thông tin và số vàng hiện có')
 ].map(command => command.toJSON());
 
@@ -75,15 +110,13 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 client.on('clientReady', async () => {
   console.log(`Bot ${client.user.tag} đã sẵn sàng!`);
-  
-  // Tự động đăng ký Slash Commands
   try {
     console.log('🔄 Đang đăng ký Slash Commands...');
     await rest.put(
       Routes.applicationCommands(client.user.id),
       { body: commands }
     );
-    console.log('✅ Đăng ký Slash Commands thành công! (/start-run, /profile)');
+    console.log('✅ Đăng ký Slash Commands thành công!');
   } catch (error) {
     console.error('❌ Lỗi đăng ký Slash Commands:', error);
   }
@@ -93,25 +126,18 @@ client.on('interactionCreate', async (interaction) => {
   try {
     const userId = interaction.user.id;
 
-    // Kiểm tra chính chủ
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
-      const customIdUser = interaction.customId.split(':')[1];
+      const customIdUser = interaction.customId.split(':')[2] || interaction.customId.split(':')[1];
       if (customIdUser && customIdUser !== userId) {
         return interaction.reply({ content: '❌ Đây không phải là lượt chơi của bạn!', ephemeral: true });
       }
     }
 
-    // --- 1. XỬ LÝ SLASH COMMANDS ---
+    // --- 1. SLASH COMMANDS ---
     if (interaction.isChatInputCommand()) {
-      
-      // Lệnh /profile
       if (interaction.commandName === 'profile') {
         await interaction.deferReply();
-
-        // Lấy tổng số vàng tích lũy từ Database
         const totalGold = await db.getPlayerGold(userId);
-
-        // Link Avatar người dùng
         const userAvatar = interaction.user.displayAvatarURL({ dynamic: true, size: 256 });
 
         const simpleProfileEmbed = new EmbedBuilder()
@@ -119,16 +145,8 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`📜 Hồ Sơ Hiệp Sĩ`)
           .setThumbnail(userAvatar)
           .addFields(
-            { 
-              name: '👤 Tên Hiệp Sĩ', 
-              value: `**${interaction.user.username}**`, 
-              inline: true 
-            },
-            { 
-              name: '💰 Tổng Vàng Sở Hữu', 
-              value: `\`${totalGold}\` Gold`, 
-              inline: true 
-            }
+            { name: '👤 Tên Hiệp Sĩ', value: `**${interaction.user.username}**`, inline: true },
+            { name: '💰 Tổng Vàng Sở Hữu', value: `\`${totalGold}\` Gold`, inline: true }
           )
           .setFooter({ text: 'Discord Roguelike Bot', iconURL: interaction.client.user.displayAvatarURL() })
           .setTimestamp();
@@ -136,17 +154,15 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.editReply({ embeds: [simpleProfileEmbed] });
       }
 
-      // Lệnh /start-run
       if (interaction.commandName === 'start-run') {
         await interaction.deferReply();
 
         if (activeRuns.has(userId)) {
           const currentRun = activeRuns.get(userId);
-          
           const busyEmbed = new EmbedBuilder()
             .setColor(0xFF9900)
             .setTitle('⚠️ Bạn đang có một lượt chơi chưa kết thúc!')
-            .setDescription(`Bạn đang dừng chân tại **Phòng ${currentRun.room}** với nhân vật **${currentRun.raceName}**.\nBạn muốn tiếp tục hay hủy bỏ để tạo run mới?`);
+            .setDescription(`Bạn đang dừng chân tại **Phòng ${currentRun.room}** với nhân vật **${currentRun.raceName}**.\nBạn muốn tiếp tục hay hủy bỏ?`);
 
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`resume_run:${userId}`).setLabel('Tiếp tục Run cũ').setStyle(ButtonStyle.Primary),
@@ -182,6 +198,7 @@ client.on('interactionCreate', async (interaction) => {
           staff: null,
           spell: null,
           gold: 0,
+          runes: 50, // Khởi đầu cho 50 Runes
           room: 0
         };
 
@@ -189,8 +206,8 @@ client.on('interactionCreate', async (interaction) => {
 
         const embed = new EmbedBuilder()
           .setColor(0x0099FF)
-          .setTitle(`🎲 Khởi Tạo Nhân Vật Ngẫu Nhiên`)
-          .setDescription(`Bạn là **${subData.name}**\n🗡️ **Vũ khí khởi đầu:** ${starterWeapon.name}`)
+          .setTitle(`🎲 Bắt Đầu Hành Trình 30 Phòng Dungeon`)
+          .setDescription(`Bạn là **${subData.name}**\n🗡️ **Vũ khí:** ${starterWeapon.name}\n🔮 **Rune khởi đầu:** \`50\` Runes`)
           .addFields(
             { name: '❤️ Vigor', value: `${subData.vigor}`, inline: true },
             { name: '🧪 Mind', value: `${subData.mind}`, inline: true },
@@ -201,7 +218,7 @@ client.on('interactionCreate', async (interaction) => {
           );
 
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`next_room:${userId}`).setLabel('Tiến vào Phòng 1').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`start_first_room:${userId}`).setLabel('Tiến vào Dungeon (Phòng 1)').setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`abandon_run:${userId}`).setLabel('Rút lui').setStyle(ButtonStyle.Danger)
         );
 
@@ -209,28 +226,21 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // --- 2. XỬ LÝ CÁC NÚT BẤM ---
+    // --- 2. BUTTON INTERACTIONS ---
     if (interaction.isButton()) {
-      const action = interaction.customId.split(':')[0];
+      const parts = interaction.customId.split(':');
+      const action = parts[0];
 
       if (action === 'resume_run') {
         const player = activeRuns.get(userId);
+        const pathRow = generatePathChoices(userId, player.room + 1);
+
         const statusEmbed = new EmbedBuilder()
           .setColor(0x00FFFF)
-          .setTitle(`🛡️ Trạng Thái Trận Đấu Đang Tiếp Tục`)
-          .setDescription(`Bạn đang ở Phòng **${player.room}**`)
-          .addFields(
-            { name: '❤️ HP', value: `${player.hp}/${player.maxHp}`, inline: true },
-            { name: '⚔️ ATK', value: `${calculateAtk(player)}`, inline: true },
-            { name: '🛡️ DEF', value: `${calculateDef(player)}`, inline: true }
-          );
+          .setTitle(`🛡️ Chuẩn Bị Vào Phòng ${player.room + 1}`)
+          .setDescription(`❤️ HP: \`${player.hp}/${player.maxHp}\` | 🔮 Runes: \`${player.runes}\`\nHãy chọn 1 trong các đường đi phía dưới:`);
 
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`next_room:${userId}`).setLabel(`Tiến vào Phòng ${player.room + 1}`).setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`abandon_run:${userId}`).setLabel('Rút lui').setStyle(ButtonStyle.Danger)
-        );
-
-        return interaction.update({ embeds: [statusEmbed], components: [row] });
+        return interaction.update({ embeds: [statusEmbed], components: [pathRow] });
       }
 
       if (action === 'force_abandon') {
@@ -249,260 +259,291 @@ client.on('interactionCreate', async (interaction) => {
       if (action === 'abandon_run') {
         activeRuns.delete(userId);
         return interaction.update({ 
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('🚪 Rút Lui Thành Công')
-              .setDescription(`Bạn đã bỏ cuộc tại **Phòng ${player.room}**. Tiến trình lượt này đã bị hủy.`)
-              .setColor(0x888888)
-          ], 
+          embeds: [new EmbedBuilder().setTitle('🚪 Rút Lui Thành Công').setDescription(`Dừng chân tại Phòng ${player ? player.room : 0}.`).setColor(0x888888)], 
           components: [] 
         });
       }
 
-      if (action === 'next_room') {
+      if (action === 'start_first_room') {
         await interaction.deferUpdate();
-        player.room += 1;
+        player.room = 1;
+        const pathRow = generatePathChoices(userId, 1);
+        const embed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle(`🚪 Cửa Vào Dungeon - Phòng 1`)
+          .setDescription(`Hãy chọn 1 trong 3 con đường phía trước để dấn thân vào nguy hiểm:`);
 
-        await interaction.editReply({ 
-          embeds: [new EmbedBuilder().setTitle(`🚪 Đang tiến vào Phòng ${player.room}...`).setColor(0xFFFF00)], 
-          components: [] 
-        });
+        return interaction.editReply({ embeds: [embed], components: [pathRow] });
+      }
 
-        let currentMonster;
-        if (monsters.bosses && monsters.bosses[player.room]) {
-          currentMonster = monsters.bosses[player.room];
-        } else {
-          const eligibleMonsters = monsters.normalMonsters.filter(
-            m => player.room >= m.minRoom && player.room <= m.maxRoom
-          );
-          const pool = eligibleMonsters.length > 0 
-            ? eligibleMonsters 
-            : monsters.normalMonsters.filter(m => m.minRoom === 11);
+      // Xử lý chọn 1 trong 3 nhánh đường đi
+      if (action === 'choose_path') {
+        const pathType = parts[1];
+        await interaction.deferUpdate();
 
-          currentMonster = getRandomElements(pool, 1)[0];
+        // 1. Nhánh Trạm Nghỉ Chân
+        if (pathType === 'rest') {
+          const healHp = Math.round(player.maxHp * 0.4);
+          const healMp = Math.round(player.maxMp * 0.5);
+          player.hp = Math.min(player.maxHp, player.hp + healHp);
+          player.mp = Math.min(player.maxMp, player.mp + healMp);
+
+          const restEmbed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle(`🏕️ Trạm Nghỉ Chân (Phòng ${player.room})`)
+            .setDescription(`Bạn tìm thấy một đống lửa an toàn để nghỉ ngơi.\n❤️ Hồi \`+${healHp}\` HP (${player.hp}/${player.maxHp})\n🧪 Hồi \`+${healMp}\` MP (${player.mp}/${player.maxMp})`);
+
+          const pathRow = generatePathChoices(userId, player.room + 1);
+          player.room += 1;
+          return interaction.editReply({ embeds: [restEmbed], components: [pathRow] });
         }
 
-        const isAlive = await runCombat(interaction, player, currentMonster);
+        // 2. Nhánh Rương Báu Rune
+        if (pathType === 'chest') {
+          const foundRunes = Math.floor(Math.random() * 41) + 30; // 30 - 70 Runes
+          player.runes += foundRunes;
 
-        if (isAlive) {
-          if (player.room === 15) {
-            const victoryEmbed = new EmbedBuilder()
-              .setColor(0xFFD700)
-              .setTitle(`🎉 CHÚC MỪNG! BẠN ĐÃ ĐÁNH BẠI BOSS VÀ HOÀN THÀNH RUN!`)
-              .setDescription(`Bạn đã tiêu diệt **${currentMonster.name}** tại Phòng 15 thành công!`);
+          const chestEmbed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle(`💎 Mở Rương Báu (Phòng ${player.room})`)
+            .setDescription(`Bạn tìm thấy một rương cổ chứa đầy ma thuật!\n🔮 Nhận được: \`+${foundRunes}\` Runes (Tổng: \`${player.runes}\` Runes)`);
 
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`save_build:${userId}`).setLabel('Lưu vào Danh Sách Build').setStyle(ButtonStyle.Success)
-            );
+          const pathRow = generatePathChoices(userId, player.room + 1);
+          player.room += 1;
+          return interaction.editReply({ embeds: [chestEmbed], components: [pathRow] });
+        }
 
-            return await interaction.editReply({ embeds: [victoryEmbed], components: [row] });
-          }
+        // 3. Nhánh Cửa Hàng Rune
+        if (pathType === 'shop') {
+          const shopEmbed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle(`🛒 Cửa Hàng Rune Bí Mật (Phòng ${player.room})`)
+            .setDescription(`Chào mừng! Bạn đang có **\`${player.runes}\` Runes**.\nHãy chọn món đồ bạn muốn mua từ danh sách bên dưới:`);
 
-          const allPossibleRewards = [
-            ...weapons.map(w => ({ ...w, itemType: 'weapon' })),
-            ...armors.map(a => ({ ...a, itemType: 'armor' })),
-            ...buffs.map(b => ({ ...b, itemType: 'buff' })),
-            ...staves.map(st => ({ ...st, itemType: 'staff' })),
-            ...spells.map(sp => ({ ...sp, itemType: 'spell' }))
+          const shopOptions = [
+            { label: '🧪 Bình Máu (Hồi 50% HP)', value: 'item_heal', description: 'Giá: 30 Runes' },
+            { label: '⚔️ Bùa Cường Hóa (+5 STR & DEX)', value: 'item_str', description: 'Giá: 60 Runes' },
+            { label: '🔮 Bùa Phù Thủy (+5 INT & FAITH)', value: 'item_int', description: 'Giá: 60 Runes' },
+            { label: '🛡️ Huyết Thạch (+30 Max HP)', value: 'item_hp', description: 'Giá: 80 Runes' },
+            { label: '🚪 Không mua gì cả, đi tiếp', value: 'item_skip', description: 'Rời cửa hàng' }
           ];
 
-          const randomRewards = getRandomElements(allPossibleRewards, 3);
-          let rewardDetailText = "";
-          const rewardOptions = [];
-          const rewardMap = {};
-
-          const isBoss = player.room % 5 === 0;
-          const earnedGold = isBoss 
-            ? Math.floor(Math.random() * 301) + 200 
-            : Math.floor(Math.random() * 31) + 20; 
-          player.gold = (player.gold || 0) + earnedGold;
-
-          randomRewards.forEach((item, index) => {
-            const uniqueKey = `${item.itemType}_${item.id}_${index}`;
-            rewardMap[uniqueKey] = item;
-
-            if (item.itemType === 'weapon') {
-              rewardDetailText += `• **[Vũ Khí] ${item.name}**: ATK \`${item.baseAtk}\` (${item.type})\n`;
-              rewardOptions.push({
-                label: `[Vũ Khí] ${item.name}`,
-                value: uniqueKey,
-                description: `ATK: ${item.baseAtk} | Hệ: ${item.type}`
-              });
-            } else if (item.itemType === 'staff') {
-                const scalePercent = Math.round((item.scaleInt || 0) * 100);
-                const detail = `Base: ${item.basePower} | Scale: ${scalePercent}% INT | +${item.manaBonus} MP`;
-                
-                rewardDetailText += `• **[Gậy Phép] ${item.name}**: Sức mạnh \`${item.basePower}\` (+${scalePercent}% INT) | +\`${item.manaBonus}\` MP\n`;
-                rewardOptions.push({
-                  label: `[Gậy Phép] ${item.name}`,
-                  value: uniqueKey,
-                  description: detail.length > 50 ? detail.substring(0, 47) + '...' : detail
-                });
-            } else if (item.itemType === 'spell') {
-              rewardDetailText += `• **[Phép] ${item.name}**: Tốn ${item.cost} MP | Hệ ${item.type}\n`;
-              rewardOptions.push({
-                label: `[Phép] ${item.name}`,
-                value: uniqueKey,
-                description: `Tốn ${item.cost} MP | Hệ ${item.type}`
-              });
-            } else if (item.itemType === 'armor') {
-              rewardDetailText += `• **[Giáp] ${item.name}**: +\`${item.hpBonus}\` HP | +\`${item.defBonus}\` DEF\n`;
-              rewardOptions.push({
-                label: `[Giáp] ${item.name}`,
-                value: uniqueKey,
-                description: `+${item.hpBonus || 0} HP | +${item.defBonus || 0} DEF`
-              });
-            } else if (item.itemType === 'buff') {
-              let buffText = [];
-              if (item.strBonus) buffText.push(`+${item.strBonus} STR`);
-              if (item.dexBonus) buffText.push(`+${item.dexBonus} DEX`);
-              if (item.intBonus) buffText.push(`+${item.intBonus} INT`);
-              if (item.faithBonus) buffText.push(`+${item.faithBonus} FAITH`);
-              if (item.hpBonus) buffText.push(`+${item.hpBonus} HP`);
-              
-              const descString = buffText.join(', ') || 'Tăng chỉ số nhân vật';
-
-              rewardDetailText += `• **[Buff] ${item.name}**: ${descString}\n`;
-              rewardOptions.push({
-                label: `[Buff] ${item.name}`,
-                value: uniqueKey,
-                description: descString
-              });
-            }
-          });
-
-          rewardOptions.push({
-            label: `❌ Bỏ qua phần thưởng`,
-            value: `skip_reward`,
-            description: `Không lấy đồ, giữ nguyên trang bị hiện tại.`
-          });
-
-          player.currentRewardMap = rewardMap;
-
-          const row = new ActionRowBuilder().addComponents(
+          const shopRow = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
-              .setCustomId(`select_reward:${userId}`)
-              .setPlaceholder('Chọn 1 chiến lợi phẩm hoặc Bỏ qua...')
-              .addOptions(rewardOptions)
+              .setCustomId(`buy_shop:${userId}`)
+              .setPlaceholder('Chọn vật phẩm để mua...')
+              .addOptions(shopOptions)
           );
 
-          const hpRegen = Math.round(player.maxHp * 0.25);
-          const mpRegen = Math.round(player.maxMp * 0.50);
+          return interaction.editReply({ embeds: [shopEmbed], components: [shopRow] });
+        }
 
-          player.hp = Math.min(player.maxHp, player.hp + hpRegen);
-          player.mp = Math.min(player.maxMp, player.mp + mpRegen);
+        // 4. Nhánh Chiến Đấu (Quái thường / Mini-Boss / Boss)
+        if (pathType === 'monster') {
+          await interaction.editReply({ 
+            embeds: [new EmbedBuilder().setTitle(`⚔️ Đang chiến đấu tại Phòng ${player.room}...`).setColor(0xFF0000)], 
+            components: [] 
+          });
 
-          const winEmbed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle(`🎉 Thắng Phòng ${player.room}!`)
-            .setDescription(
-              `Bạn đã tiêu diệt **${currentMonster.name}**!\n` +
-              `💰 **Phần thưởng:** +\`${earnedGold}\` Gold (Hiện có: \`${player.gold}\` Gold)\n` +
-              `💚 **Hồi phục:** +\`${hpRegen}\` HP | +\`${mpRegen}\` MP`
+          let currentMonster;
+          if (monsters.bosses && monsters.bosses[player.room]) {
+            currentMonster = monsters.bosses[player.room];
+          } else {
+            const eligibleMonsters = monsters.normalMonsters.filter(
+              m => player.room >= m.minRoom && player.room <= m.maxRoom
+            );
+            const pool = eligibleMonsters.length > 0 ? eligibleMonsters : monsters.normalMonsters;
+            currentMonster = getRandomElements(pool, 1)[0];
+          }
+
+          const isAlive = await runCombat(interaction, player, currentMonster);
+
+          if (isAlive) {
+            // Thắng Trùm Cuối Phòng 30
+            if (player.room === 30) {
+              const victoryEmbed = new EmbedBuilder()
+                .setColor(0xFFD700)
+                .setTitle(`🏆 CHÚC MỪNG! BẠN ĐÃ TIÊU DIỆT TRÙM CUỐI VÀ PHÁ ĐẢO DUNGEON!`)
+                .setDescription(`Bạn đã đánh bại **${currentMonster.name}** tại Phòng 30 xuất sắc!`);
+
+              const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`save_build:${userId}`).setLabel('💾 Lưu Build & Nhận Vàng').setStyle(ButtonStyle.Success)
+              );
+
+              return await interaction.editReply({ embeds: [victoryEmbed], components: [row] });
+            }
+
+            // Thưởng Runes & Vàng khi diệt quái
+            const isBoss = player.room % 10 === 0;
+            const earnedGold = isBoss ? Math.floor(Math.random() * 301) + 300 : Math.floor(Math.random() * 41) + 20;
+            const earnedRunes = isBoss ? Math.floor(Math.random() * 101) + 100 : Math.floor(Math.random() * 21) + 15;
+
+            player.gold += earnedGold;
+            player.runes += earnedRunes;
+
+            // Tạo lựa chọn Trang bị thưởng
+            const allPossibleRewards = [
+              ...weapons.map(w => ({ ...w, itemType: 'weapon' })),
+              ...armors.map(a => ({ ...a, itemType: 'armor' })),
+              ...buffs.map(b => ({ ...b, itemType: 'buff' })),
+              ...staves.map(st => ({ ...st, itemType: 'staff' })),
+              ...spells.map(sp => ({ ...sp, itemType: 'spell' }))
+            ];
+
+            const randomRewards = getRandomElements(allPossibleRewards, 3);
+            const rewardOptions = [];
+            const rewardMap = {};
+
+            randomRewards.forEach((item, index) => {
+              const uniqueKey = `${item.itemType}_${item.id}_${index}`;
+              rewardMap[uniqueKey] = item;
+              rewardOptions.push({
+                label: `[${item.itemType.toUpperCase()}] ${item.name}`,
+                value: uniqueKey,
+                description: `Chiến lợi phẩm rơi ra từ ${currentMonster.name}`
+              });
+            });
+
+            rewardOptions.push({ label: '❌ Bỏ qua đồ', value: 'skip_reward', description: 'Không lấy thiết bị này' });
+            player.currentRewardMap = rewardMap;
+
+            const row = new ActionRowBuilder().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId(`select_reward:${userId}`)
+                .setPlaceholder('Chọn chiến lợi phẩm...')
+                .addOptions(rewardOptions)
             );
 
-          await interaction.editReply({ embeds: [winEmbed], components: [row] });
-        } else {
-          const loseEmbed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle(`☠️ BẠN ĐÃ HY SINH!`)
-            .setDescription(`Hành trình kết thúc tại **Phòng ${player.room}** bởi **${currentMonster.name}**.`)
-            .addFields(
-              { name: '👤 Nhân vật', value: `${player.raceName}`, inline: true },
-              { name: '🗡️ Vũ khí cuối', value: player.weapon ? player.weapon.name : 'Chưa có', inline: true },
-              { name: '🛡️ Giáp cuối', value: player.armor ? player.armor.name : 'Chưa có', inline: true },
-              { name: '📊 Chỉ số cuối', value: `STR: ${player.stats.str} | DEX: ${player.stats.dex} | INT: ${player.stats.int} | FAITH: ${player.stats.faith}` }
+            const winEmbed = new EmbedBuilder()
+              .setColor(0x00FF00)
+              .setTitle(`🎉 HẠ GỤC ${currentMonster.name.toUpperCase()}!`)
+              .setDescription(
+                `💰 **Thưởng:** +\`${earnedGold}\` Gold | 🔮 +\`${earnedRunes}\` Runes (Hiện có: \`${player.runes}\` Runes)\n` +
+                `Chọn 1 món đồ thưởng bên dưới để tiếp tục chọn đường đi tiếp theo:`
+              );
+
+            await interaction.editReply({ embeds: [winEmbed], components: [row] });
+          } else {
+            // Thua trận
+            const loseEmbed = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle(`☠️ BẠN ĐÃ HY SINH!`)
+              .setDescription(`Hành trình kết thúc tại **Phòng ${player.room}** bởi **${currentMonster.name}**.`)
+              .addFields(
+                { name: '👤 Nhân vật', value: `${player.raceName}`, inline: true },
+                { name: '📊 Tiến trình', value: `Phòng ${player.room}/30`, inline: true }
+              );
+
+            const row = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`save_build:${userId}`).setLabel('💾 Lưu Vàng & Kết thúc').setStyle(ButtonStyle.Primary)
             );
 
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`save_build:${userId}`).setLabel('💾 Lưu vào Builds').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`force_abandon:${userId}`).setLabel('🔄 Tạo Run Mới').setStyle(ButtonStyle.Success)
-          );
-
-          await interaction.editReply({ embeds: [loseEmbed], components: [row] });
-          await db.addPlayerGold(userId, earnedGold);
+            await interaction.editReply({ embeds: [loseEmbed], components: [row] });
+          }
         }
       }
 
       if (action === 'save_build') {
         const pData = activeRuns.get(userId);
         if (pData) {
-          // 1. Cập nhật số vàng kiếm được trong lượt vào Database
-          if (pData.gold > 0) {
-            await db.addPlayerGold(pData.userId, pData.gold);
-          }
-          
-          // 2. Lưu thông tin Build
-          if (db.saveBuild) {
-            db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
-          }
-
-          // 3. Xóa run khỏi bộ nhớ RAM
+          if (pData.gold > 0) await db.addPlayerGold(pData.userId, pData.gold);
+          if (db.saveBuild) db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
           activeRuns.delete(userId);
         }
 
         await interaction.update({ 
-          embeds: [new EmbedBuilder().setTitle('💾 Đã lưu Build và Vàng thành công!').setColor(0x00FF00)], 
+          embeds: [new EmbedBuilder().setTitle('💾 Đã lưu thành công! Hãy dùng `/start-run` để bắt đầu lượt mới.').setColor(0x00FF00)], 
           components: [] 
         });
       }
     }
 
-    // --- 3. XỬ LÝ SELECT MENU PHẦN THƯỞNG ---
+    // --- 3. SELECT MENU INTERACTIONS ---
     if (interaction.isStringSelectMenu()) {
-      const action = interaction.customId.split(':')[0];
+      const parts = interaction.customId.split(':');
+      const action = parts[0];
 
+      // Mua đồ ở Cửa hàng Rune
+      if (action === 'buy_shop') {
+        const player = activeRuns.get(userId);
+        if (!player) return;
+
+        const val = interaction.values[0];
+        let msg = "";
+
+        if (val === 'item_heal') {
+          if (player.runes >= 30) {
+            player.runes -= 30;
+            player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.5));
+            msg = "✅ Bạn đã mua Bình Máu và hồi 50% HP!";
+          } else msg = "❌ Bạn không đủ Runes!";
+        } else if (val === 'item_str') {
+          if (player.runes >= 60) {
+            player.runes -= 60;
+            player.stats.str += 5;
+            player.stats.dex += 5;
+            msg = "✅ Bạn đã mua Bùa Cường Hóa (+5 STR, +5 DEX)!";
+          } else msg = "❌ Bạn không đủ Runes!";
+        } else if (val === 'item_int') {
+          if (player.runes >= 60) {
+            player.runes -= 60;
+            player.stats.int += 5;
+            player.stats.faith += 5;
+            msg = "✅ Bạn đã mua Bùa Phù Thủy (+5 INT, +5 FAITH)!";
+          } else msg = "❌ Bạn không đủ Runes!";
+        } else if (val === 'item_hp') {
+          if (player.runes >= 80) {
+            player.runes -= 80;
+            player.maxHp += 30;
+            player.hp += 30;
+            msg = "✅ Bạn đã mua Huyết Thạch (+30 Max HP)!";
+          } else msg = "❌ Bạn không đủ Runes!";
+        } else {
+          msg = "🚪 Bạn rời khỏi Cửa hàng mà không mua gì.";
+        }
+
+        const pathRow = generatePathChoices(userId, player.room + 1);
+        player.room += 1;
+
+        const resEmbed = new EmbedBuilder()
+          .setColor(0x9B59B6)
+          .setTitle(`🛒 Kết Quả Mua Sắm`)
+          .setDescription(`${msg}\n🔮 Runes còn lại: \`${player.runes}\`\nHãy chọn đường đi tiếp theo:`);
+
+        return interaction.update({ embeds: [resEmbed], components: [pathRow] });
+      }
+
+      // Chọn nhận phần thưởng sau khi diệt quái
       if (action === 'select_reward') {
         const player = activeRuns.get(userId);
         if (!player) return;
 
         const selectedKey = interaction.values[0];
-
-        if (selectedKey === 'skip_reward') {
-          player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.25));
-        } else {
+        if (selectedKey !== 'skip_reward') {
           const selectedItem = player.currentRewardMap ? player.currentRewardMap[selectedKey] : null;
           if (selectedItem) {
-            if (selectedItem.itemType === 'weapon') {
-              player.weapon = selectedItem;
-            } else if (selectedItem.itemType === 'armor') {
-              player.armor = selectedItem;
-              player.maxHp += selectedItem.hpBonus;
-            } else if (selectedItem.itemType === 'staff') {
-              player.staff = selectedItem;
-              player.maxMp += selectedItem.manaBonus;
-            } else if (selectedItem.itemType === 'spell') {
-              player.spell = selectedItem;
-            } else if (selectedItem.itemType === 'buff') {
+            if (selectedItem.itemType === 'weapon') player.weapon = selectedItem;
+            else if (selectedItem.itemType === 'armor') { player.armor = selectedItem; player.maxHp += selectedItem.hpBonus || 0; }
+            else if (selectedItem.itemType === 'staff') { player.staff = selectedItem; player.maxMp += selectedItem.manaBonus || 0; }
+            else if (selectedItem.itemType === 'spell') player.spell = selectedItem;
+            else if (selectedItem.itemType === 'buff') {
               if (selectedItem.strBonus) player.stats.str += selectedItem.strBonus;
               if (selectedItem.dexBonus) player.stats.dex += selectedItem.dexBonus;
               if (selectedItem.intBonus) player.stats.int += selectedItem.intBonus;
               if (selectedItem.faithBonus) player.stats.faith += selectedItem.faithBonus;
-              if (selectedItem.hpBonus) player.maxHp += selectedItem.hpBonus;
             }
           }
-          player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.25));
-          player.mp = Math.min(player.maxMp, player.mp + Math.round(player.maxMp * 0.50));
         }
+
+        const pathRow = generatePathChoices(userId, player.room + 1);
+        player.room += 1;
 
         const statusEmbed = new EmbedBuilder()
           .setColor(0x00FFFF)
-          .setTitle(`🛡️ Trạng Thái Nhân Vật`)
-          .addFields(
-            { name: '❤️ HP', value: `${player.hp}/${player.maxHp}`, inline: true },
-            { name: '🧪 MP', value: `${player.mp}/${player.maxMp}`, inline: true },
-            { name: '🗡️ Vũ Khí', value: player.weapon ? player.weapon.name : 'Chưa có', inline: true },
-            { name: '🪄 Gậy Phép', value: player.staff ? player.staff.name : 'Chưa có', inline: true },
-            { name: '📜 Phép Thuật', value: player.spell ? player.spell.name : 'Chưa học', inline: true },
-            { name: '🛡️ Giáp', value: player.armor ? player.armor.name : 'Chưa có', inline: true }
-          );
+          .setTitle(`🛡️ Chuẩn Bị Vào Phòng ${player.room}`)
+          .setDescription(`❤️ HP: \`${player.hp}/${player.maxHp}\` | 🧪 MP: \`${player.mp}/${player.maxMp}\` | 🔮 Runes: \`${player.runes}\`\nHãy chọn đường đi tiếp theo:`);
 
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`next_room:${userId}`).setLabel(`Tiến vào Phòng ${player.room + 1}`).setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`abandon_run:${userId}`).setLabel('Rút lui').setStyle(ButtonStyle.Danger)
-        );
-
-        await interaction.update({ embeds: [statusEmbed], components: [row] });
+        await interaction.update({ embeds: [statusEmbed], components: [pathRow] });
       }
     }
   } catch (error) {

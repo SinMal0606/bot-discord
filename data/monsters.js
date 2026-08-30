@@ -57,7 +57,26 @@ module.exports = {
 
   // --- BOSS PHÒNG 15 ---
   bosses: {
-    15: {
+    10: {
+      name: "Thủ Lĩnh Trinh Sát: Sable Eye",
+      hp: 200,
+      skills: [
+        { name: "Chém Cuồng Nộ", multiplier: 1.0, type: "physical" },
+        { name: "Bão Lửa Địa Ngục", multiplier: 1.3, type: "fire" },
+        { name: "Tia Sáng Trừng Phạt", multiplier: 1.5, type: "holy" }
+      ],
+      resistances: { physical: 0.2, magic: 0.1, fire: 0.3, lightning: 0.2, holy: 0.2 }
+    },20: {
+      name: "Tướng Lĩnh Quân Đoàn: Varkor",
+      hp: 300,
+      skills: [
+        { name: "Chém Cuồng Nộ", multiplier: 1.3, type: "physical" },
+        { name: "Bão Lửa Địa Ngục", multiplier: 1.5, type: "fire" },
+        { name: "Tia Sáng Trừng Phạt", multiplier: 1.8, type: "holy" }
+      ],
+      resistances: { physical: 0.30, magic: 0.1, fire: 0.30, lightning: 0.1, holy: 0.1 }
+    },
+    30: {
       name: "👑 Chúa Tể Hắc An: Malakor",
       hp: 400,
       skills: [
@@ -65,7 +84,6 @@ module.exports = {
         { name: "Bão Lửa Địa Ngục", multiplier: 1.8, type: "fire" },
         { name: "Tia Sáng Trừng Phạt", multiplier: 2.2, type: "holy" }
       ],
-      // Kháng đều 30% mọi hệ, ngoại trừ điểm yếu duy nhất là Thần Thánh (-20%)
       resistances: { physical: 0.30, magic: 0.30, fire: 0.30, lightning: 0.30, holy: -0.20 }
     }
   }
