@@ -449,15 +449,35 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (action === 'save_build') {
+        // 1. Hoãn phản hồi ngay lập tức để Discord không báo timeout 3 giây
+        await interaction.deferUpdate();
+
         const pData = activeRuns.get(userId);
         if (pData) {
-          if (pData.gold > 0) await db.addPlayerGold(pData.userId, pData.gold);
-          if (db.saveBuild) db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
-          activeRuns.delete(userId);
+          try {
+            // 2. Thực hiện ghi dữ liệu vào DB (cho dù tốn vài giây vẫn an toàn)
+            if (pData.gold > 0) {
+              await db.addPlayerGold(pData.userId, pData.gold);
+            }
+            if (db.saveBuild) {
+              await db.saveBuild(pData.userId, pData.raceName, pData.weapon ? pData.weapon.name : 'Vũ khí thô', pData.room);
+            }
+          } catch (dbError) {
+            console.error('❌ Lỗi khi lưu dữ liệu vào DB:', dbError);
+          } finally {
+            // 3. Xóa lượt chơi khỏi bộ nhớ tạm
+            activeRuns.delete(userId);
+          }
         }
 
-        await interaction.update({ 
-          embeds: [new EmbedBuilder().setTitle('💾 Đã lưu thành công! Hãy dùng `/start-run` để bắt đầu lượt mới.').setColor(0x00FF00)], 
+        // 4. Cập nhật lại giao diện sau khi đã hoàn tất lưu dữ liệu
+        return interaction.editReply({ 
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('💾 Đã lưu thành công!')
+              .setDescription('Toàn bộ số vàng tích lũy đã được chuyển vào tài khoản của bạn. Hãy dùng `/start-run` để bắt đầu lượt mới!')
+              .setColor(0x00FF00)
+          ], 
           components: [] 
         });
       }
