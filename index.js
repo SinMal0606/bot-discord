@@ -19,6 +19,14 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Catch Unhandled Errors để ngăn Server Crash (Status 1)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception thrown:', err);
+});
+
 app.get('/', (req, res) => {
   res.send('Bot Discord đang hoạt động!');
 });
@@ -26,6 +34,11 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Web server đang chạy trên port ${PORT}`);
 });
+
+if (!process.env.DISCORD_TOKEN) {
+  console.error('❌ CRITICAL ERROR: Thiếu DISCORD_TOKEN trong biến môi trường (Environment Variables)!');
+  process.exit(1);
+}
 
 const client = new Client({ 
   intents: [GatewayIntentBits.Guilds],
@@ -39,7 +52,7 @@ const client = new Client({
 const activeRuns = new Map();
 
 function getRandomElements(arr, count) {
-  if (!arr || arr.length === 0) return [];
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return [];
   const shuffled = [...arr].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
 }
@@ -66,7 +79,6 @@ function getStarterWeapon(stats) {
   return foundWeapon || weapons[0];
 }
 
-// Sinh 3 nhánh đường đi ngẫu nhiên
 function generatePathChoices(userId, roomNumber) {
   if (roomNumber === 10 || roomNumber === 20 || roomNumber === 30) {
     const bossName = roomNumber === 30 ? "TRÙM CUỐI: Chúa Tể Vô Vực" : `MINI-BOSS Phòng ${roomNumber}`;
@@ -101,7 +113,6 @@ function generatePathChoices(userId, roomNumber) {
   return row;
 }
 
-// REGISTER SLASH COMMANDS
 const commands = [
   new SlashCommandBuilder().setName('start-run').setDescription('Bắt đầu lượt chơi mới (30 Phòng)'),
   new SlashCommandBuilder().setName('profile').setDescription('Xem thông tin và số vàng hiện có')
@@ -109,6 +120,7 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
+// Sửa lại thành 'ready' chuẩn Discord.js
 client.on('ready', async () => {
   console.log(`Bot ${client.user.tag} đã sẵn sàng!`);
   try {
@@ -135,7 +147,6 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // 1. SLASH COMMANDS
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'profile') {
         await interaction.deferReply();
@@ -228,7 +239,6 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // 2. BUTTON INTERACTIONS
     if (interaction.isButton()) {
       const parts = interaction.customId.split(':');
       const action = parts[0];
@@ -348,10 +358,10 @@ client.on('interactionCreate', async (interaction) => {
           if (monsters.bosses && monsters.bosses[player.room]) {
             currentMonster = monsters.bosses[player.room];
           } else {
-            const eligibleMonsters = monsters.normalMonsters.filter(
+            const eligibleMonsters = (monsters.normalMonsters || []).filter(
               m => player.room >= m.minRoom && player.room <= m.maxRoom
             );
-            const pool = eligibleMonsters.length > 0 ? eligibleMonsters : monsters.normalMonsters;
+            const pool = eligibleMonsters.length > 0 ? eligibleMonsters : (monsters.normalMonsters || []);
             currentMonster = getRandomElements(pool, 1)[0];
           }
 
@@ -453,7 +463,6 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // 3. SELECT MENU INTERACTIONS
     if (interaction.isStringSelectMenu()) {
       const parts = interaction.customId.split(':');
       const action = parts[0];
@@ -540,11 +549,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
   } catch (error) {
-    if (error.code === 10062) {
-      console.warn('⚠️ Interaction expired due to network delay.');
-    } else {
-      console.error('Unhandled interaction error:', error);
-    }
+    console.error('Unhandled interaction error:', error);
   }
 });
 
