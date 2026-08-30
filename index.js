@@ -8,10 +8,14 @@ const { processCombatTurn } = require('./combat');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   await connectDB();
   console.log(`Logged in as ${client.user.tag}!`);
 });
+
+const http = require('http');
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('Bot is running!')).listen(port);
 
 // Đăng ký Slash Commands
 const commands = [
