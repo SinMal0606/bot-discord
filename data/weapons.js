@@ -1,6 +1,67 @@
-// Scaling factor: S = 1.5, A = 1.2, B = 1.0, C = 0.8, D = 0.5
-module.exports = [
-  { id: "w1", name: "Thanh Dài Thép", type: "heavy", damage: { physical: 15 }, scaling: { strength: 0.8 } },
-  { id: "w2", name: "Dao Găm Nhanh", type: "light", damage: { physical: 8 }, scaling: { dexterity: 0.9 } },
-  { id: "w3", name: "Kiếm Rồng Lửa", type: "heavy", damage: { physical: 10, fire: 12 }, scaling: { strength: 0.5, faith: 0.6 } }
+const weapons = [
+    {
+        id: "iron_sword",
+        name: "Iron Sword",
+        description: "A simple sword for close combat.",
+
+        category: "light",
+
+        damage: [
+            {
+                type: "physical",
+                base: 30,
+                scaling: {
+                    strength: 0.6,
+                    dexterity: 0.4
+                }
+            }
+        ]
+    },
+
+    {
+        id: "greatsword",
+        name: "Greatsword",
+        description: "A heavy sword that relies on raw strength.",
+
+        category: "heavy",
+
+        damage: [
+            {
+                type: "physical",
+                base: 45,
+                scaling: {
+                    strength: 1.0
+                }
+            }
+        ]
+    },
+
+    {
+        id: "flame_blade",
+        name: "Flame Blade",
+        description: "A sword infused with holy flame.",
+
+        category: "light",
+
+        damage: [
+            {
+                type: "physical",
+                base: 30,
+                scaling: {
+                    strength: 0.5,
+                    dexterity: 0.3
+                }
+            },
+
+            {
+                type: "fire",
+                base: 20,
+                scaling: {
+                    faith: 0.5
+                }
+            }
+        ]
+    }
 ];
+
+module.exports = weapons;
